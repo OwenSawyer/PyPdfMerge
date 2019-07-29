@@ -10,11 +10,18 @@ from PyPDF2 import PdfFileMerger
 
 from functools import partial
 
-class PdfMerge():
+class File:
+    def __init__(self, name, size):
+        self.name = name
+        self.size = size
 
-    def merger(output_path, input_paths):
-        pdf_merger = PdfFileMerger()
-        file_handles = []
+class PdfMerger:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def merge(output_path, input_paths):
+        pdf_merger = PdfFileMerger(strict=False)
 
         for path in input_paths:
             pdf_merger.append(path)
@@ -31,26 +38,32 @@ class Window(QDialog):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        browseButton = self.createButton("&Browse...", self.browse)
-        findButton = self.createButton("&Generate", self.find)
+        self.pdf_merger = PdfMerger()
 
-        self.fileComboBox = self.createComboBox("*")
-        self.textComboBox = self.createComboBox()
+        browseButton = self.createButton("&Browse...", self.browse)
+        findButton = self.createButton("&Generate", self.generate)
+
+        self.fileComboBox = self.createComboBox("merged.pdf")
         self.directoryComboBox = self.createComboBox(QDir.currentPath())
 
-        fileLabel = QLabel("Named:")
-        directoryLabel = QLabel("In directory:")
+        fileLabel = QLabel("Output file name:")
+        directoryLabel = QLabel("Browse:")
         self.filesFoundLabel = QLabel()
 
         self.createFilesTable()
 
-        buttonsLayout = QHBoxLayout()
-        buttonsLayout.addStretch()
-        buttonsLayout.addWidget(findButton)
+        generateLayout = QHBoxLayout()
+        generateLayout.addStretch()
+        generateLayout.addWidget(findButton)
 
         mainLayout = QGridLayout()
         mainLayout.addWidget(fileLabel, 0, 0)
         mainLayout.addWidget(self.fileComboBox, 0, 1, 1, 2)
+
+
+        mainLayout.addWidget(directoryLabel, 1, 0)
+        mainLayout.addWidget(self.directoryComboBox, 1, 1)
+        mainLayout.addWidget(browseButton, 1, 2)
 
         self.upBtn = QPushButton('Up', self)
         self.downBtn = QPushButton('Down', self)
@@ -58,14 +71,11 @@ class Window(QDialog):
         self.buttonLayout = QHBoxLayout()
         self.buttonLayout.addWidget(self.upBtn)
         self.buttonLayout.addWidget(self.downBtn)
-        mainLayout.addLayout(self.buttonLayout, 1, 0)
+        mainLayout.addLayout(self.buttonLayout, 2, 0)
 
-        mainLayout.addWidget(directoryLabel, 2, 0)
-        mainLayout.addWidget(self.directoryComboBox, 2, 1)
-        mainLayout.addWidget(browseButton, 2, 2)
         mainLayout.addWidget(self.filesTable, 3, 0, 1, 3)
         mainLayout.addWidget(self.filesFoundLabel, 4, 0)
-        mainLayout.addLayout(buttonsLayout, 5, 0, 1, 3)
+        mainLayout.addLayout(generateLayout, 5, 0, 1, 3)
         self.setLayout(mainLayout)
 
         self.setWindowTitle("Find Files")
@@ -73,10 +83,10 @@ class Window(QDialog):
 
     def browse(self):
         filter = "TXT (*.txt);;PDF (*.pdf)"
-        files = QFileDialog.getOpenFileNames(self, caption="Select Files", directory = QDir.currentPath())[0]
-        print(files) # (['E:/Scan_0011.pdf', 'E:/Scan_0013.pdf', 'E:/Scan_0014.pdf', 'E:/Scan_0016.pdf'], 'All Files (*)')
+        self.files = QFileDialog.getOpenFileNames(self, caption="Select Files", directory = QDir.currentPath())[0]
+        print(self.files) # (['E:/Scan_0011.pdf', 'E:/Scan_0013.pdf', 'E:/Scan_0014.pdf', 'E:/Scan_0016.pdf'], 'All Files (*)')
 
-        self.find(files)
+        self.find(self.files)
 
     @staticmethod
     def updateComboBox(comboBox):
@@ -84,7 +94,8 @@ class Window(QDialog):
             comboBox.addItem(comboBox.currentText())
 
     def find(self, files):
-        self.filesTable.setRowCount(0)
+
+        #self.filesTable.setRowCount(0)
 
         path = self.directoryComboBox.currentText()
         self.updateComboBox(self.directoryComboBox)
@@ -98,18 +109,25 @@ class Window(QDialog):
             file = QFile(self.currentDir.absoluteFilePath(fn))
             size = QFileInfo(file).size()
 
-            fileNameItem = QTableWidgetItem(fn)
+            fileNameItem = QStandardItem(fn)
             fileNameItem.setFlags(fileNameItem.flags() ^ Qt.ItemIsEditable)
-            sizeItem = QTableWidgetItem("%d KB" % (int((size + 1023) / 1024)))
+            sizeItem = QStandardItem("%d KB" % (int((size + 1023) / 1024)))
             sizeItem.setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
             sizeItem.setFlags(sizeItem.flags() ^ Qt.ItemIsEditable)
 
-            row = self.filesTable.rowCount()
-            self.filesTable.insertRow(row)
-            self.filesTable.setItem(row, 0, fileNameItem)
-            self.filesTable.setItem(row, 1, sizeItem)
+            column1 = fileNameItem
+            column2 = sizeItem
+
+
+
+            self.model.appendRow([column1, column2])
+            # row = self.filesTable.rowCount()
+            # self.filesTable.insertRow(row)
+            # self.filesTable.setItem(row, 0, fileNameItem)
+            # self.filesTable.setItem(row, 1, sizeItem)
 
         self.filesFoundLabel.setText("%d file(s) found (Double click on a file to open it)" % len(files))
+        #self.table.model().layoutChanged.emit()
 
     def createButton(self, text, member):
         button = QPushButton(text)
@@ -124,15 +142,18 @@ class Window(QDialog):
         return comboBox
 
     def createFilesTable(self):
-        self.filesTable = QTableWidget(0, 2)
+        self.filesTable = QTableView(self) #0,2
         self.filesTable.setSelectionBehavior(QAbstractItemView.SelectRows)
 
-        self.filesTable.setHorizontalHeaderLabels(("File Name", "Size"))
-        self.filesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.filesTable.verticalHeader().hide()
-        self.filesTable.setShowGrid(False)
+        self.model = QStandardItemModel()
+        self.model.setHorizontalHeaderLabels(['Name', 'Size'])
+        self.filesTable.setModel(self.model)
 
-        self.filesTable.cellActivated.connect(self.openFileOfItem)
+        #self.filesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        #self.filesTable.verticalHeader().hide()
+        #self.filesTable.setShowGrid(False)
+
+        #self.filesTable.cellActivated.connect(self.openFileOfItem)
 
         # self.table = QTableView(self)
         # self.table.setSelectionBehavior(self.table.SelectRows)
@@ -181,6 +202,9 @@ class Window(QDialog):
         for item in items:
             selModel.select(item.index(), selModel.Select|selModel.Rows)
 
+    def generate(self):
+        self.pdf_merger.merge(self.fileComboBox.currentText(), self.files)
+        # open alert box ? or onscreen prompt?
 
 if __name__ == '__main__':
 
